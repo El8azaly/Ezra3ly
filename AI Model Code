@@ -1,0 +1,168 @@
+import requests 
+import cv2
+import time
+from ultralytics import YOLO
+import supervision as sv
+import matplotlib.pyplot as plt
+
+# Initialize annotators
+bound = sv.BoundingBoxAnnotator()
+label_ann = sv.LabelAnnotator()
+
+# Telegram Bot Token and Chat ID 
+TOKEN = "7432316663:AAHvY3EB6_hwmmeaP1sZnMcofhYKTG_g6Zc"
+chat_id = "2063929644"
+
+# Load the YOLOv8 model
+model = YOLO("D:\perso\DL\mest3.pt")
+
+# Get class names from the model
+class_names = model.names
+
+# Open the video file or capture live video 
+cap = cv2.VideoCapture("http://192.168.8.4:8080/video")  # Use 0 for webcam
+
+# Dictionary of plant diseases and treatments
+plant_diseases_treatments = {
+    "Powdery Mildew": {
+        "Symptoms": "White or gray powdery spots on leaves, stems, and buds.",
+        "Treatment": "Use fungicides containing potassium bicarbonate, neem oil, or sulfur. Ensure good air circulation and avoid overhead watering."
+    },
+    "Downy Mildew": {
+        "Symptoms": "Yellow or white patches on the upper leaf surface, often with fuzzy growth underneath.",
+        "Treatment": "Apply fungicides like copper-based products. Improve air circulation and avoid wetting foliage."
+    },
+    "Blight": {
+        "Symptoms": "Dark, water-soaked spots on leaves, stems, and fruit.",
+        "Treatment": "Remove and destroy affected plant parts. Use fungicides containing chlorothalonil or copper. Rotate crops and avoid overhead watering."
+    },
+    "Rust": {
+        "Symptoms": "Small, rust-colored pustules on the undersides of leaves.",
+        "Treatment": "Apply fungicides with active ingredients like myclobutanil or sulfur. Remove and destroy infected leaves."
+    },
+    "Leaf Spot": {
+        "Symptoms": "Small, water-soaked spots that enlarge and turn brown with a yellow halo.",
+        "Treatment": "Use fungicides containing chlorothalonil or mancozeb. Remove and dispose of infected leaves and debris."
+    },
+    "Anthracnose": {
+        "Symptoms": "Dark, sunken lesions on leaves, stems, flowers, or fruits.",
+        "Treatment": "Apply fungicides with active ingredients such as copper or chlorothalonil. Practice crop rotation and improve plant spacing for better air circulation."
+    },
+    "Root Rot": {
+        "Symptoms": "Wilting, yellowing leaves, and rotting roots.",
+        "Treatment": "Improve soil drainage, reduce watering, and use fungicides like those containing mefenoxam or phosphorous acid."
+    },
+    "General Fungal Diseases": {
+        "Symptoms": "Varies widely, including spots, mold, wilting, and stunted growth.",
+        "Treatment": "General fungicides, improve air circulation, remove infected plant parts, avoid overhead watering, and maintain proper spacing."
+    },
+    "Late Blight": {
+        "Symptoms": "Dark, oily spots on leaves and stems, which eventually turn brown and die.",
+        "Treatment": "Apply fungicides containing chlorothalonil or copper. Remove and destroy infected plants. Practice crop rotation and ensure good air circulation."
+    },
+    "Early Blight": {
+        "Symptoms": "Dark, oily spots on leaves and stems, which eventually turn brown and die.",
+        "Treatment": "Apply fungicides containing chlorothalonil or copper. Remove and destroy infected plants. Practice crop rotation and ensure good air circulation."
+    },
+    "Leaf Mold": {
+        "Symptoms": "Yellow spots on the upper side of leaves with olive-green to gray mold on the underside.",
+        "Treatment": "Use fungicides like copper-based products. Improve air circulation and reduce humidity. Remove and destroy infected leaves."
+    },
+    "Septoria": {
+        "Symptoms": "Small, water-soaked spots on leaves that enlarge to form circular lesions with gray centers.",
+        "Treatment": "Apply fungicides containing chlorothalonil or copper. Remove and destroy infected leaves. Ensure good air circulation and avoid overhead watering."
+    },"Leaf Miner": {
+        "Symptoms": "Small, water-soaked spots that enlarge and turn brown with a yellow halo.",
+        "Treatment": "Use fungicides containing chlorothalonil or mancozeb. Remove and dispose of infected leaves and debris."
+    },
+    "Yellow Leaf Curl Virus": {
+        "Symptoms": "Leaves are often bent downwards, stiff, thicker than normal, have a leathery texture.",
+        "Treatment": "Use fungicides containing chlorothalonil or mancozeb. Remove and dispose of infected leaves and debris."
+    },
+}
+
+def send_image(bot_token, chat_id, image_path):
+    """
+    Sends an image to a Telegram chat.
+
+    Parameters:
+    - bot_token: The token for the T
+    elegram bot.
+    - chat_id: The ID of the Telegram chat to send the image to.
+    - image_path: The file path of the image to send.
+    """
+    url = f'https://api.telegram.org/bot{bot_token}/sendPhoto'
+    with open(image_path, 'rb') as photo_file:
+        files = {'photo': photo_file}
+        data = {'chat_id': chat_id}
+        response = requests.post(url, files=files, data=data)
+    return response.json()
+
+def send_image_and_treatment(bot_token, chat_id, annotated_image_path, detected_diseases):
+    """
+    Send image and treatment information to Telegram.
+
+    Parameters:
+    - bot_token: The token for the Telegram bot.
+    - chat_id: The ID of the Telegram chat.
+    - annotated_image_path: The path to the annotated image.
+    - detected_diseases: A dictionary of detected diseases and their treatments.
+    """
+    response = send_image(bot_token, chat_id, annotated_image_path)
+    if response.get('ok'):
+        for disease, treatment in detected_diseases.items():
+            message = f"Disease: {disease}\nTreatment: {treatment}"
+            url = f'https://api.telegram.org/bot{bot_token}/sendMessage'
+            data = {'chat_id': chat_id, 'text': message}
+            requests.post(url, data=data)
+
+# Timer setup
+send_interval = 10  # 10 seconds
+last_send_time = time.time()
+
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    frame = cv2.resize(frame, (600, 400))
+
+    # Perform prediction
+    result = model.predict(frame)
+    detection = sv.Detections.from_ultralytics(result[0])
+
+    # Annotate frame with bounding boxes and labels
+    ann_frame = bound.annotate(
+        scene=frame.copy(), detections=detection
+    )
+
+    detected_diseases = {}
+    for i, det in enumerate(detection.xyxy):
+        x, y, w, z = det
+        class_id = int(detection.class_id[i])
+        label = class_names[class_id]
+        treatment = plant_diseases_treatments.get(label, {}).get("Treatment", "No treatment information available.")
+        detected_diseases[label] = treatment
+        print(f"Disease: {label}, Treatment: {treatment}")
+        ann_frame = cv2.putText(ann_frame, label, (int(x), int(y) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 0, 0), 2)
+
+    # Convert the frame to RGB for displaying with matplotlib
+    img_rgb = cv2.cvtColor(ann_frame, cv2.COLOR_BGR2RGB)
+
+    # Display the frame using matplotlib
+    plt.imshow(img_rgb)
+    plt.axis('off')
+    plt.draw()
+    plt.pause(10)
+    plt.clf()
+
+    # Send image and treatment info every 10 seconds
+    current_time = time.time()
+    if current_time - last_send_time >= send_interval:
+        annotated_image_path = "annotated_image.jpg"
+        cv2.imwrite(annotated_image_path, ann_frame)
+        send_image_and_treatment(TOKEN, chat_id, annotated_image_path, detected_diseases)
+        last_send_time = current_time
+
+cap.release()
+plt.close()
