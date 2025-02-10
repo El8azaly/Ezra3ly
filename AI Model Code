@@ -10,8 +10,8 @@ bound = sv.BoundingBoxAnnotator()
 label_ann = sv.LabelAnnotator()
 
 # Telegram Bot Token and Chat ID 
-TOKEN = "7432316663:AAHvY3EB6_hwmmeaP1sZnMcofhYKTG_g6Zc"
-chat_id = "2063929644"
+TOKEN = "**************************"
+chat_id = "*******"
 
 # Load the YOLOv8 model
 model = YOLO("D:\perso\DL\mest3.pt")
